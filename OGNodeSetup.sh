@@ -14,6 +14,14 @@ curl https://sh.rustup.rs -sSf | sh -s -- -y
 source "$HOME/.cargo/env"
 rustc --version || echo "Rust installation failed"
 
+#Install go
+wget https://go.dev/dl/go1.24.3.linux-amd64.tar.gz && \
+sudo rm -rf /usr/local/go && \
+sudo tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz && \
+rm go1.24.3.linux-amd64.tar.gz && \
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc && \
+source ~/.bashrc
+
 # Install 0G Storage Node
 git clone https://github.com/0glabs/0g-storage-node.git
 cd 0g-storage-node
