@@ -6,20 +6,7 @@
 set -euo pipefail
 
 # Update & install dependencies
-sudo apt-get update && sudo apt-get upgrade -y
-sudo apt install curl iptables build-essential git wget lz4 jq make cmake gcc nano automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip libleveldb-dev screen ufw -y
 
-# Install Rust
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-source "$HOME/.cargo/env"
-rustc --version || echo "Rust installation failed"
-
-# Install 0G Storage Node
-git clone https://github.com/0glabs/0g-storage-node.git
-cd 0g-storage-node
-git checkout v1.0.0
-git submodule update --init
-cargo build --release
 
 # Download fresh config
 CONFIG_PATH="$HOME/0g-storage-node/run/config.toml"
