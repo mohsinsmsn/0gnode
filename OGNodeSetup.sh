@@ -1,33 +1,6 @@
 #!/bin/bash
 
-# Add 0G-Galileo-Testnet chain from here: https://docs.0g.ai/run-a-node/testnet-information
-# Faucet: https://faucet.0g.ai/
 
-set -euo pipefail
-
-# Update & install dependencies
-sudo apt-get update && sudo apt-get upgrade -y
-sudo apt install curl iptables build-essential git wget lz4 jq make cmake gcc nano automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip libleveldb-dev screen ufw -y
-
-# Install Rust
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-source "$HOME/.cargo/env"
-rustc --version || echo "Rust installation failed"
-
-#Install go
-wget https://go.dev/dl/go1.24.3.linux-amd64.tar.gz && \
-sudo rm -rf /usr/local/go && \
-sudo tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz && \
-rm go1.24.3.linux-amd64.tar.gz && \
-echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc && \
-source ~/.bashrc
-
-# Install 0G Storage Node
-git clone https://github.com/0glabs/0g-storage-node.git
-cd 0g-storage-node
-git checkout v1.0.0
-git submodule update --init
-cargo build --release
 
 # Download fresh config
 CONFIG_PATH="$HOME/0g-storage-node/run/config.toml"
@@ -35,26 +8,70 @@ rm -rf "$CONFIG_PATH"
 mkdir -p "$(dirname "$CONFIG_PATH")"
 curl -o "$CONFIG_PATH" https://raw.githubusercontent.com/mohsinsmsn/0gnode/refs/heads/main/config.toml
 
-# Prompt user for private key
+# Prompt user for private key (64 hex chars, no 0x)
 exec < /dev/tty
 echo ""
-echo "👉 Enter your private key (must start with 0x and be 66 characters long):"
+echo "🔐 Enter your private key (exactly 64 hex characters, without 0x):"
 read -e -p "Private Key: " PRIVATE_KEY
 
-# Keep asking until valid input is received
-while [[ ! "$PRIVATE_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; do
-  echo "❌ Invalid private key format. Must start with 0x and be 66 characters long."
-  read -e -p "Please re-enter your private key: " PRIVATE_KEY
+while [[ ! "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; do
+  echo "❌ Invalid private key format. Please enter exactly 64 hex characters (no 0x)."
+  read -e -p "Re-enter Private Key: " PRIVATE_KEY
 done
 
-# Update the miner_key in config.toml
+# Update miner_key in config.toml
 if grep -q "^miner_key" "$CONFIG_PATH"; then
-  sed -i "s/^miner_key.*/miner_key = \"$PRIVATE_KEY\"/" "$CONFIG_PATH"
+  sed -i "s|^miner_key.*|miner_key = \"$PRIVATE_KEY\"|" "$CONFIG_PATH"
 else
   echo "miner_key = \"$PRIVATE_KEY\"" >> "$CONFIG_PATH"
 fi
 
 echo "✅ Private key successfully updated in config.toml"
+
+# RPC selection
+echo ""
+echo "🌐 Available RPC Endpoints:"
+RPC_LIST=(
+  "https://0g-evm-rpc.zeycanode.com/"
+  "https://evmrpc-testnet.0g.ai"
+  "https://0g-testnet-rpc.astrostake.xyz"
+  "https://lightnode-json-rpc-0g.grandvalleys.com"
+  "https://0g-galileo-evmrpc.corenodehq.xyz/"
+  "https://0g.json-rpc.cryptomolot.com/"
+  "https://0g-evm.maouam.nodelab.my.id/"
+  "https://0g-evmrpc-galileo.coinsspor.com/"
+  "https://0g-evmrpc-galileo.komado.xyz/"
+  "https://0g.galileo.zskw.xyz/"
+  "https://0g-galileo.shachopra.com/"
+  "https://0g-galileo-evmrpc2.corenodehq.xyz/"
+  "http://0g-galileo-evm-rpc.validator247.com/"
+  "https://evmrpc.vinnodes.com/"
+  "https://0g-galileo-ferdimanaa.xyz/"
+  "https://0g-galileo.xzid.xyz/"
+)
+
+for i in "${!RPC_LIST[@]}"; do
+  echo "[$i] ${RPC_LIST[$i]}"
+done
+
+echo ""
+read -p "Enter the number of the RPC you'd like to use: " RPC_INDEX
+
+while ! [[ "$RPC_INDEX" =~ ^[0-9]+$ ]] || (( RPC_INDEX < 0 || RPC_INDEX >= ${#RPC_LIST[@]} )); do
+  echo "❌ Invalid input. Please enter a number between 0 and $(( ${#RPC_LIST[@]} - 1 ))."
+  read -p "Enter the number of the RPC you'd like to use: " RPC_INDEX
+done
+
+CHOSEN_RPC="${RPC_LIST[$RPC_INDEX]}"
+
+# Update blockchain_rpc_endpoint in config.toml
+if grep -q "^blockchain_rpc_endpoint" "$CONFIG_PATH"; then
+  sed -i "s|^blockchain_rpc_endpoint.*|blockchain_rpc_endpoint = \"$CHOSEN_RPC\"|" "$CONFIG_PATH"
+else
+  echo "blockchain_rpc_endpoint = \"$CHOSEN_RPC\"" >> "$CONFIG_PATH"
+fi
+
+echo "✅ RPC endpoint updated to: $CHOSEN_RPC"
 
 # Create systemd service
 sudo tee /etc/systemd/system/zgs.service > /dev/null <<EOF
@@ -79,4 +96,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable zgs
 sudo systemctl start zgs
 
+echo ""
 echo "🚀 ZGS Node has been installed and started successfully!"
+echo "🔍 To view logs: journalctl -u zgs -f"
