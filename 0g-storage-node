@@ -2,7 +2,7 @@
 
 # 0G Storage Node Setup Script
 
-sudo apt update && sudo apt install -y figlet ruby && sudo gem install lolcat && figlet -f slant "Kind Crypto" | lolcat
+sudo apt update && sudo apt install -y figlet ruby && sudo gem install lolcat && figlet -f slant "Kind Crypto" | lolcat && sleep 5
 
 set -euo pipefail
 
