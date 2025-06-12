@@ -8,6 +8,8 @@ sudo gem install lolcat > /dev/null 2>&1 && \
 figlet -f slant "Kind Crypto" | lolcat && \
 sleep 5
 
+# 0G Storage Node Setup Script (Fixed Version)
+# Author: Mohsin | Modified by ChatGPT for stable prompt interaction
 
 set -euo pipefail
 
@@ -43,32 +45,31 @@ cargo build --release
 # Download fresh config
 CONFIG_PATH="$HOME/0g-storage-node/run/config.toml"
 mkdir -p "$(dirname "$CONFIG_PATH")"
-curl -o "$CONFIG_PATH" https://raw.githubusercontent.com/mohsinsmsn/0gnode/refs/heads/main/config.toml
+curl -s -o "$CONFIG_PATH" https://raw.githubusercontent.com/mohsinsmsn/0gnode/refs/heads/main/config.toml
 
-# Prompt user for private key
-exec < /dev/tty
-echo ""
-echo "\U0001F510 Enter your private key (exactly 64 hex characters, without 0x):"
-read -e -p "Private Key: " PRIVATE_KEY
+# Prompt user for private key with TTY-safe input
+read_private_key() {
+  while true; do
+    read -r -p $'\n🔐 Enter your private key (64 hex chars, without 0x): ' PRIVATE_KEY </dev/tty
+    if [[ "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then
+      break
+    else
+      echo "❌ Invalid format. Please enter exactly 64 hex characters (no 0x)." >&2
+    fi
+  done
+}
+read_private_key
 
-while [[ ! "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; do
-  echo "\u274C Invalid private key format. Must be exactly 64 hex characters without 0x."
-  read -e -p "Please re-enter your private key: " PRIVATE_KEY
-done
-
-# Update miner_key in config.toml
+# Update config.toml
 if grep -q "^miner_key" "$CONFIG_PATH"; then
   sed -i "s/^miner_key.*/miner_key = \"$PRIVATE_KEY\"/" "$CONFIG_PATH"
 else
   echo "miner_key = \"$PRIVATE_KEY\"" >> "$CONFIG_PATH"
 fi
 
-echo "\xE2\x9C\x85 Private key successfully updated in config.toml"
+echo -e "\n✅ Private key successfully updated in config.toml"
 
-# Prompt for and measure RPCs
-echo ""
-echo "\U0001F310 Measuring RPC Endpoint ping times... Please wait."
-
+# Define RPC list
 RPC_LIST=(
   "https://0g-evm-rpc.zeycanode.com/"
   "https://evmrpc-testnet.0g.ai"
@@ -88,36 +89,42 @@ RPC_LIST=(
   "https://0g-galileo.xzid.xyz/"
 )
 
+# Measure ping time
+echo -e "\n🌐 Measuring RPC Endpoint ping times... Please wait."
 SORTED_RPCS=()
-
 for RPC in "${RPC_LIST[@]}"; do
   TIME_S=$(curl -o /dev/null -s -w "%{time_total}" --connect-timeout 2 "$RPC")
-  if [[ -z "$TIME_S" || "$TIME_S" == "000" ]]; then
-    TIME_MS=99999
-  else
-    TIME_MS=$(awk "BEGIN { printf \"%.0f\", $TIME_S * 1000 }")
-  fi
+  [[ -z "$TIME_S" || "$TIME_S" == "000" ]] && TIME_MS=99999 || TIME_MS=$(awk "BEGIN { printf \"%.0f\", $TIME_S * 1000 }")
   SORTED_RPCS+=("${TIME_MS}|${RPC}")
-done
+  sleep 0.1
 
+done
 IFS=$'\n' SORTED_RPCS=($(sort -n <<<"${SORTED_RPCS[*]}"))
 unset IFS
 
 echo ""
-echo "\xE2\x9C\x85 RPCs sorted by ping:"
+echo "✅ RPCs sorted by ping:"
 for i in "${!SORTED_RPCS[@]}"; do
   IFS="|" read -r TIME RPC <<< "${SORTED_RPCS[$i]}"
   if [[ "$TIME" == "99999" ]]; then
-    echo "[$i] $RPC \xF0\x9F\x9B\x91 timeout"
+    echo "[$i] $RPC 🛑 timeout"
   else
-    echo "[$i] $RPC \xF0\x9F\x95\x92 ${TIME}ms"
+    echo "[$i] $RPC 🕒 ${TIME}ms"
   fi
-  RPC_MENU[$i]=$RPC
-  ((i++))
+  sleep 0.05
 done
 
-echo ""
-read -p "\U0001F4E1 Choose the RPC number to use (e.g., 0): " RPC_CHOICE
+read_rpc_choice() {
+  while true; do
+    read -r -p $'\n📡 Choose the RPC number to use (e.g., 0): ' RPC_CHOICE </dev/tty
+    if [[ "$RPC_CHOICE" =~ ^[0-9]+$ ]] && (( RPC_CHOICE >= 0 && RPC_CHOICE < ${#SORTED_RPCS[@]} )); then
+      break
+    else
+      echo "❌ Invalid selection. Try again." >&2
+    fi
+  done
+}
+read_rpc_choice
 
 CHOSEN_RPC=$(echo "${SORTED_RPCS[$RPC_CHOICE]}" | cut -d'|' -f2)
 
@@ -127,8 +134,7 @@ else
   echo "blockchain_rpc_endpoint = \"${CHOSEN_RPC}\"" >> "$CONFIG_PATH"
 fi
 
-echo "\xE2\x9C\x85 RPC endpoint successfully set to:"
-echo "\"$CHOSEN_RPC\""
+echo -e "\n✅ RPC endpoint successfully set to:\n\"$CHOSEN_RPC\""
 
 # Create systemd service
 sudo tee /etc/systemd/system/zgs.service > /dev/null <<EOF
@@ -153,4 +159,4 @@ sudo systemctl enable zgs
 sudo systemctl start zgs
 
 echo ""
-echo "\xF0\x9F\x9A\x80 ZGS Node has been installed and started successfully!"
+echo "🚀 ZGS Node has been installed and started successfully!"
