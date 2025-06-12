@@ -23,13 +23,12 @@ source "$HOME/.cargo/env"
 rustc --version || echo "Rust installation failed"
 
 # Install Go
-wget https://go.dev/dl/go1.24.3.linux-amd64.tar.gz
+wget -q https://go.dev/dl/go1.24.3.linux-amd64.tar.gz
 sudo rm -rf /usr/local/go
 sudo tar -C /usr/local -xzf go1.24.3.linux-amd64.tar.gz
 rm go1.24.3.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 export PATH=$PATH:/usr/local/go/bin
-source ~/.bashrc
 go version || echo "Go installation failed"
 
 # Remove existing node dir if present
@@ -47,30 +46,30 @@ CONFIG_PATH="$HOME/0g-storage-node/run/config.toml"
 mkdir -p "$(dirname "$CONFIG_PATH")"
 curl -s -o "$CONFIG_PATH" https://raw.githubusercontent.com/mohsinsmsn/0gnode/refs/heads/main/config.toml
 
-# Prompt user for private key with TTY-safe input
-read_private_key() {
-  while true; do
-    read -r -p $'\n🔐 Enter your private key (64 hex chars, without 0x): ' PRIVATE_KEY </dev/tty
-    if [[ "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then
-      break
-    else
-      echo "❌ Invalid format. Please enter exactly 64 hex characters (no 0x)." >&2
-    fi
-  done
-}
-read_private_key
+# Prompt user for private key
+echo ""
+echo "🔐 Enter your private key (64 hex chars, without 0x):"
+read -r -p "Private Key: " PRIVATE_KEY </dev/tty
 
-# Update config.toml
+while [[ ! "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; do
+  echo "❌ Invalid format. Must be exactly 64 hex characters without 0x."
+  read -r -p "Re-enter Private Key: " PRIVATE_KEY </dev/tty
+done
+
+# Update miner_key in config.toml
 if grep -q "^miner_key" "$CONFIG_PATH"; then
   sed -i "s/^miner_key.*/miner_key = \"$PRIVATE_KEY\"/" "$CONFIG_PATH"
 else
   echo "miner_key = \"$PRIVATE_KEY\"" >> "$CONFIG_PATH"
 fi
 
-echo -e "\n✅ Private key successfully updated in config.toml"
+echo "✅ Private key successfully updated in config.toml"
 
-# Define RPC list
-RPC_LIST=(
+# RPC Selection with ping times
+echo ""
+echo "🌐 Measuring RPC Endpoint ping times... Please wait."
+
+declare -a RPC_LIST=(
   "https://0g-evm-rpc.zeycanode.com/"
   "https://evmrpc-testnet.0g.ai"
   "https://0g-testnet-rpc.astrostake.xyz"
@@ -89,16 +88,18 @@ RPC_LIST=(
   "https://0g-galileo.xzid.xyz/"
 )
 
-# Measure ping time
-echo -e "\n🌐 Measuring RPC Endpoint ping times... Please wait."
-SORTED_RPCS=()
+declare -a SORTED_RPCS=()
+
 for RPC in "${RPC_LIST[@]}"; do
   TIME_S=$(curl -o /dev/null -s -w "%{time_total}" --connect-timeout 2 "$RPC")
-  [[ -z "$TIME_S" || "$TIME_S" == "000" ]] && TIME_MS=99999 || TIME_MS=$(awk "BEGIN { printf \"%.0f\", $TIME_S * 1000 }")
+  if [[ -z "$TIME_S" || "$TIME_S" == "000" ]]; then
+    TIME_MS=99999
+  else
+    TIME_MS=$(awk "BEGIN { printf \"%.0f\", $TIME_S * 1000 }")
+  fi
   SORTED_RPCS+=("${TIME_MS}|${RPC}")
-  sleep 0.1
-
 done
+
 IFS=$'\n' SORTED_RPCS=($(sort -n <<<"${SORTED_RPCS[*]}"))
 unset IFS
 
@@ -111,20 +112,10 @@ for i in "${!SORTED_RPCS[@]}"; do
   else
     echo "[$i] $RPC 🕒 ${TIME}ms"
   fi
-  sleep 0.05
 done
 
-read_rpc_choice() {
-  while true; do
-    read -r -p $'\n📡 Choose the RPC number to use (e.g., 0): ' RPC_CHOICE </dev/tty
-    if [[ "$RPC_CHOICE" =~ ^[0-9]+$ ]] && (( RPC_CHOICE >= 0 && RPC_CHOICE < ${#SORTED_RPCS[@]} )); then
-      break
-    else
-      echo "❌ Invalid selection. Try again." >&2
-    fi
-  done
-}
-read_rpc_choice
+echo ""
+read -r -p "📡 Choose the RPC number to use: " RPC_CHOICE </dev/tty
 
 CHOSEN_RPC=$(echo "${SORTED_RPCS[$RPC_CHOICE]}" | cut -d'|' -f2)
 
@@ -134,7 +125,8 @@ else
   echo "blockchain_rpc_endpoint = \"${CHOSEN_RPC}\"" >> "$CONFIG_PATH"
 fi
 
-echo -e "\n✅ RPC endpoint successfully set to:\n\"$CHOSEN_RPC\""
+echo "✅ RPC endpoint successfully set to:"
+echo "\"$CHOSEN_RPC\""
 
 # Create systemd service
 sudo tee /etc/systemd/system/zgs.service > /dev/null <<EOF
@@ -154,9 +146,11 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
+# Enable and start service
 sudo systemctl daemon-reload
 sudo systemctl enable zgs
 sudo systemctl start zgs
 
 echo ""
 echo "🚀 ZGS Node has been installed and started successfully!"
+
