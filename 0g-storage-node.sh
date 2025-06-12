@@ -48,11 +48,11 @@ curl -o "$CONFIG_PATH" https://raw.githubusercontent.com/mohsinsmsn/0gnode/refs/
 # Prompt user for private key
 exec < /dev/tty
 echo ""
-echo "🔐 Enter your private key (exactly 64 hex characters, without 0x):"
+echo "\U0001F510 Enter your private key (exactly 64 hex characters, without 0x):"
 read -e -p "Private Key: " PRIVATE_KEY
 
 while [[ ! "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; do
-  echo "❌ Invalid private key format. Must be exactly 64 hex characters without 0x."
+  echo "\u274C Invalid private key format. Must be exactly 64 hex characters without 0x."
   read -e -p "Please re-enter your private key: " PRIVATE_KEY
 done
 
@@ -63,13 +63,13 @@ else
   echo "miner_key = \"$PRIVATE_KEY\"" >> "$CONFIG_PATH"
 fi
 
-echo "✅ Private key successfully updated in config.toml"
+echo "\xE2\x9C\x85 Private key successfully updated in config.toml"
 
 # Prompt for and measure RPCs
 echo ""
-echo "🌐 Measuring RPC Endpoint ping times... Please wait."
+echo "\U0001F310 Measuring RPC Endpoint ping times... Please wait."
 
-declare -a RPC_LIST=(
+RPC_LIST=(
   "https://0g-evm-rpc.zeycanode.com/"
   "https://evmrpc-testnet.0g.ai"
   "https://0g-testnet-rpc.astrostake.xyz"
@@ -88,9 +88,8 @@ declare -a RPC_LIST=(
   "https://0g-galileo.xzid.xyz/"
 )
 
-declare -a SORTED_RPCS
+SORTED_RPCS=()
 
-# Measure ping time via curl
 for RPC in "${RPC_LIST[@]}"; do
   TIME_S=$(curl -o /dev/null -s -w "%{time_total}" --connect-timeout 2 "$RPC")
   if [[ -z "$TIME_S" || "$TIME_S" == "000" ]]; then
@@ -101,34 +100,34 @@ for RPC in "${RPC_LIST[@]}"; do
   SORTED_RPCS+=("${TIME_MS}|${RPC}")
 done
 
-# Sort RPCs by ping time
 IFS=$'\n' SORTED_RPCS=($(sort -n <<<"${SORTED_RPCS[*]}"))
 unset IFS
 
 echo ""
-echo "✅ RPCs sorted by ping:"
+echo "\xE2\x9C\x85 RPCs sorted by ping:"
 for i in "${!SORTED_RPCS[@]}"; do
   IFS="|" read -r TIME RPC <<< "${SORTED_RPCS[$i]}"
   if [[ "$TIME" == "99999" ]]; then
-    echo "[$i] $RPC 🛑 timeout"
+    echo "[$i] $RPC \xF0\x9F\x9B\x91 timeout"
   else
-    echo "[$i] $RPC 🕒 ${TIME}ms"
+    echo "[$i] $RPC \xF0\x9F\x95\x92 ${TIME}ms"
   fi
+  RPC_MENU[$i]=$RPC
+  ((i++))
 done
 
 echo ""
-read -p "📡 Choose the RPC number to use (e.g., 0): " RPC_CHOICE
+read -p "\U0001F4E1 Choose the RPC number to use (e.g., 0): " RPC_CHOICE
 
 CHOSEN_RPC=$(echo "${SORTED_RPCS[$RPC_CHOICE]}" | cut -d'|' -f2)
 
-# Update blockchain_rpc_endpoint
 if grep -q "^blockchain_rpc_endpoint" "$CONFIG_PATH"; then
   sed -i "s|^blockchain_rpc_endpoint.*|blockchain_rpc_endpoint = \"${CHOSEN_RPC}\"|" "$CONFIG_PATH"
 else
   echo "blockchain_rpc_endpoint = \"${CHOSEN_RPC}\"" >> "$CONFIG_PATH"
 fi
 
-echo "✅ RPC endpoint successfully set to:"
+echo "\xE2\x9C\x85 RPC endpoint successfully set to:"
 echo "\"$CHOSEN_RPC\""
 
 # Create systemd service
@@ -149,10 +148,9 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
-# Enable and start service
 sudo systemctl daemon-reload
 sudo systemctl enable zgs
 sudo systemctl start zgs
 
 echo ""
-echo "🚀 ZGS Node has been installed and started successfully!"
+echo "\xF0\x9F\x9A\x80 ZGS Node has been installed and started successfully!"
